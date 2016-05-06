@@ -238,7 +238,7 @@ end:
 	return 0;
 usage:
 	printf("Usage: %s [(e)ncode/(d)ecode] [phrase/onion]\n", argv[0]);
-	printf("`%s encode facebookcorewwi.onion`\n", argv[0]);
+	printf("`%s encode facebookcorewwwi.onion`\n", argv[0]);
 	printf("`%s decode 'redate sheilas lifesome dowable tontiners'`\n", argv[0]);
 	return -1;
 }
