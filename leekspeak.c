@@ -21,6 +21,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <err.h>
+#include <errno.h>
 #include "uthash.h" /* https://raw.githubusercontent.com/troydhanson/uthash/master/src/uthash.h */
 
 typedef uint8_t u8;
@@ -31,26 +32,33 @@ typedef uint64_t u64;
 
 static const u8 onion_digits[33] = "abcdefghijklmnopqrstuvwxyz234567";
 
-static u8 onion_char(u8 c)
+static u8
+onion_char(u8 c)
 {
 	return onion_digits[c & 0x1f];
 }
 
-static u8 onion_value(u8 c)
+static u8
+onion_value(u8 c)
 {
-	u8 *p = strchr(onion_digits, c);
+	u8 *p = (u8 *)strchr((const char *)onion_digits, c);
 	if (p) return (u8)(p - onion_digits);
-	else return 0;
+	else {
+		warnx("%s: %s: \"%c\"", "onion_value", "Invalid character", c);
+		return 0;
+	}
 }
 
-static u8 *onion_decode(u8 *in)
+static u8 *
+onion_decode(u8 *in)
 {
+	errno = 0;
 	u8 *out = NULL;
 	u64 i = 0, j, x, out_sz = 0;
 
-	if (!in || 16 != strlen(in)) goto end;
+	if (!in || 16 != strlen((const char *)in)) goto fail;
 	out = calloc(10, sizeof(u8));
-	if (!out) goto end;
+	if (!out) goto fail;
 	while (i < 16) {
 		x = 0;
 		while (i < 16) {
@@ -61,18 +69,23 @@ static u8 *onion_decode(u8 *in)
 			out[out_sz++] = x >> ((4 - j) * 8);
 		}
 	}
-end:
 	return out;
+fail:
+	if (errno) warn("%s", "onion_decode");
+	else warnx("%s: %s: \"%s\"", "onion_decode", "Invalid onion address", in);
+	return NULL;
 }
 
-static u8 *onion_encode(u8 *in)
+static u8 *
+onion_encode(u8 *in)
 {
+	errno = 0;
 	u8 *out = NULL;
 	u64 i = 0, j, x, out_sz = 0;
 
-	if (!in) goto end;
+	if (!in) goto error;
 	out = calloc(17, sizeof(u8));
-	if (!out) goto end;
+	if (!out) goto error;
 	while (i < 10) {
 		x = 0;
 		while (i < 10) {
@@ -83,8 +96,11 @@ static u8 *onion_encode(u8 *in)
 			out[out_sz++] = onion_char(x >> (7 - j) * 5);
 		}
 	}
-end:
 	return out;
+error:
+	if (errno) warn("%s", "onion_encode");
+	else warnx("%s: %s", "onion_decode", "NULL pointer received");
+	return NULL;
 }
 
 static u64 word_count = 0;
@@ -98,25 +114,25 @@ typedef struct {
 
 static WORD_LIST *words = NULL, *values = NULL;
 
-static u8 populate_word_list(void)
+static u8
+populate_word_list(void)
 {
 	u8 s[512];
 	u8 *ptr;
 	FILE *wordfile = NULL;
-	WORD_LIST *tmp = NULL, *tmp_holder = NULL;
-	u64 i;
+	WORD_LIST *tmp = NULL;
 
 	wordfile = fopen("words", "r");
 	if (!wordfile) goto error;
-	while (fgets(s, sizeof(s), wordfile) && word_count < 65536) {
-		ptr = strchr(s, '\n');
+	while (fgets((char *)s, sizeof(s), wordfile) && word_count < 65536) {
+		ptr = (u8 *)strchr((const char *)s, '\n');
 		if (ptr) *ptr = 0;
 		tmp = calloc(1, sizeof(WORD_LIST));
 		if (!tmp) goto error;
 		tmp->v = (u16)word_count++;
-		tmp->w = strdup(s);
+		tmp->w = (u8 *)strdup((const char *)s);
 		if (!tmp->w) goto error;
-		HASH_ADD_KEYPTR(hw, words, tmp->w, strlen(tmp->w), tmp);
+		HASH_ADD_KEYPTR(hw, words, tmp->w, strlen((const char *)tmp->w), tmp);
 		HASH_ADD(hv, values, v, sizeof(u16), tmp);
 		tmp = NULL;
 	}
@@ -127,7 +143,8 @@ error:
 	return 0;
 }
 
-static void depopulate_word_list(void)
+static void
+depopulate_word_list(void)
 {
 	WORD_LIST *ptr = NULL, *tmp = NULL;
 	HASH_ITER(hw, words, ptr, tmp) {
@@ -138,24 +155,36 @@ static void depopulate_word_list(void)
 	}
 }
 
-static u16 by_word(const u8 *word)
+static u16
+by_word(const u8 *word)
 {
-	if (!word) return 0;
+	if (!word) {
+		warnx("%s: %s", "by_word", "NULL pointer");
+		return 0;
+	}
 	WORD_LIST *tmp = NULL;
-	HASH_FIND(hw, words, word, strlen(word), tmp);
+	HASH_FIND(hw, words, word, strlen((const char *)word), tmp);
 	if (tmp) return tmp->v;
-	else return 0;
+	else {
+		warnx("%s: %s", "by_word", "Invalid word");
+		return 0;
+	}
 }
 
-static u8 *by_value(const u16 value)
+static u8 *
+by_value(const u16 value)
 {
 	WORD_LIST *tmp = NULL;
 	HASH_FIND(hv, values, &value, sizeof(u16), tmp);
 	if (tmp) return tmp->w;
-	else return NULL;
+	else { /* this can only happen is the wordlist is underpopulated... */
+		warnx("%s: %s", "by_value", "Invalid value");
+		return NULL;
+	}
 }
 
-static void onion_to_phrase(u8 *onion)
+static void
+onion_to_phrase(u8 *onion)
 {
 	if (!onion) goto end;
 	u8 *raw_onion;
@@ -174,18 +203,19 @@ end:
 	return;
 }
 
-static void phrase_to_onion(u8 *phrase)
+static void
+phrase_to_onion(u8 *phrase)
 {
 	if (!phrase) goto end;
 	u8 raw_onion[10] = { 0 }, *onion = NULL;
 	u16 x;
 	u64 i = 0;
-	u8 *word = strtok(phrase, " \n");
+	u8 *word = (u8 *)strtok((char *)phrase, " \n");
 
 	do {
 		x = by_word(word);
 		*(u16 *)&raw_onion[i++ * 2] = x;
-	} while((word = strtok(NULL, " \n")));
+	} while((word = (u8 *)strtok(NULL, " \n")));
 	onion = onion_encode(raw_onion);
 	printf("%s.onion\n", onion);
 	xfree(onion);
@@ -193,16 +223,22 @@ end:
 	return;
 }
 
-int main(int argc, char **argv)
+int
+main(int argc, char **argv)
 {
-	if (argc < 3) goto end;
+	if (argc < 3) goto usage;
 	if (!populate_word_list()) goto end;
 	if ('e' == argv[1][0]) {
-		onion_to_phrase(strtok(argv[2], "."));
+		onion_to_phrase((u8 *)strtok(argv[2], "."));
 	} else if ('d' == argv[1][0]) {
-		phrase_to_onion(argv[2]);
-	}
+		phrase_to_onion((u8 *)argv[2]);
+	} else goto usage;
 end:
 	depopulate_word_list();
 	return 0;
+usage:
+	printf("Usage: %s [(e)ncode/(d)ecode] [phrase/onion]\n", argv[0]);
+	printf("`%s encode facebookcorewwi.onion`\n", argv[0]);
+	printf("`%s decode 'redate sheilas lifesome dowable tontiners'`\n", argv[0]);
+	return -1;
 }
