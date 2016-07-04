@@ -2,7 +2,7 @@ CFLAGS=-Wall -Wextra -pedantic -std=gnu99 -O2 -s
 
 all: leekspeak
 
-%: %.c
+leekspeak: leekspeak.c onion.c
 	gcc ${CFLAGS} -o $@ $^
 
 clean:

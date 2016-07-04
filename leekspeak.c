@@ -22,86 +22,10 @@
 #include <ctype.h>
 #include <err.h>
 #include <errno.h>
+#include "onion.h"
 #include "uthash.h" /* https://raw.githubusercontent.com/troydhanson/uthash/master/src/uthash.h */
 
-typedef uint8_t u8;
-typedef uint16_t u16;
-typedef uint64_t u64;
-
 #define xfree(x) { if (x) { free(x); } x = NULL; }
-
-static const u8 onion_digits[33] = "abcdefghijklmnopqrstuvwxyz234567";
-
-static u8
-onion_char(u8 c)
-{
-	return onion_digits[c & 0x1f];
-}
-
-static u8
-onion_value(u8 c)
-{
-	u8 *p = (u8 *)strchr((const char *)onion_digits, c);
-	if (p) return (u8)(p - onion_digits);
-	else {
-		warnx("%s: %s: \"%c\"", "onion_value", "Invalid character", c);
-		return 0;
-	}
-}
-
-static u8 *
-onion_decode(u8 *in)
-{
-	errno = 0;
-	u8 *out = NULL;
-	u64 i = 0, j, x, out_sz = 0;
-
-	if (!in || 16 != strlen((const char *)in)) goto fail;
-	out = calloc(10, sizeof(u8));
-	if (!out) goto fail;
-	while (i < 16) {
-		x = 0;
-		while (i < 16) {
-			x |= (u64)onion_value(tolower(in[i])) << (7 - i % 8) * 5;
-			if (!(++i % 8)) break;
-		}
-		for (j = 0; j < 5; j++) {
-			out[out_sz++] = x >> ((4 - j) * 8);
-		}
-	}
-	return out;
-fail:
-	if (errno) warn("%s", "onion_decode");
-	else warnx("%s: %s: \"%s\"", "onion_decode", "Invalid onion address", in);
-	return NULL;
-}
-
-static u8 *
-onion_encode(u8 *in)
-{
-	errno = 0;
-	u8 *out = NULL;
-	u64 i = 0, j, x, out_sz = 0;
-
-	if (!in) goto error;
-	out = calloc(17, sizeof(u8));
-	if (!out) goto error;
-	while (i < 10) {
-		x = 0;
-		while (i < 10) {
-			x |= (u64)in[i] << ((4 - i % 5) * 8);
-			if (!(++i % 5)) break;
-		}
-		for (j = 0; j < 8; j++) {
-			out[out_sz++] = onion_char(x >> (7 - j) * 5);
-		}
-	}
-	return out;
-error:
-	if (errno) warn("%s", "onion_encode");
-	else warnx("%s: %s", "onion_decode", "NULL pointer received");
-	return NULL;
-}
 
 static u64 word_count = 0;
 
@@ -184,43 +108,27 @@ by_value(const u16 value)
 }
 
 static void
-onion_to_phrase(u8 *onion)
+onion_to_phrase(const u8 *onion)
 {
-	if (!onion) goto end;
-	u8 *raw_onion;
-	u64 i;
-	u16 x;
-
-	raw_onion = onion_decode(onion);
-	if (!raw_onion) goto end;
-	for (i = 0; i < 5; i++) {
-		x = *(u16 *)&raw_onion[i * 2];
-		printf("%s ", by_value(x));
+	u8 raw_onion[10] = { 0 };
+	u16 *x = (u16 *)&raw_onion[0];
+	onion_decode(raw_onion, onion);
+	for (u64 i = 0; i < 5; i++) {
+		printf("%s ", by_value(x[i]));
 	}
-	puts("");
-	xfree(raw_onion);
-end:
-	return;
+	printf("\n");
 }
 
 static void
-phrase_to_onion(u8 *phrase)
+phrase_to_onion(u8 **phrase)
 {
-	if (!phrase) goto end;
-	u8 raw_onion[10] = { 0 }, *onion = NULL;
-	u16 x;
-	u64 i = 0;
-	u8 *word = (u8 *)strtok((char *)phrase, " \n");
-
-	do {
-		x = by_word(word);
-		*(u16 *)&raw_onion[i++ * 2] = x;
-	} while((word = (u8 *)strtok(NULL, " \n")));
-	onion = onion_encode(raw_onion);
+	u8 raw_onion[10] = { 0 }, onion[17] = { 0 };
+	u16 *x = (u16 *)&raw_onion[0];
+	for (u64 i = 0; phrase[i] && i < 5; i++) {
+		x[i] = by_word(phrase[i]);
+	}
+	onion_encode(onion, raw_onion);
 	printf("%s.onion\n", onion);
-	xfree(onion);
-end:
-	return;
 }
 
 int
@@ -229,9 +137,10 @@ main(int argc, char **argv)
 	if (argc < 3) goto usage;
 	if (!populate_word_list()) goto end;
 	if ('e' == argv[1][0]) {
+		onion_value_init();
 		onion_to_phrase((u8 *)strtok(argv[2], "."));
 	} else if ('d' == argv[1][0]) {
-		phrase_to_onion((u8 *)argv[2]);
+		phrase_to_onion((u8 **)&argv[2]);
 	} else goto usage;
 end:
 	depopulate_word_list();
