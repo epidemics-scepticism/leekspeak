@@ -10,12 +10,12 @@ This create a unique 5 word listing that can be memorized like a diceware/correc
 
 By taking back in the 5 word passphrase and mapping it against the same wordlist, we can reconstruct the original 10byte value, reencode and it reconstruct the .onion address.
 
-Building:
+### Building
 
     user@subgraph:~/src/leekspeak$ make
     gcc -Wall -Wextra -pedantic -std=gnu99 -O2 -s -o leekspeak leekspeak.c onion.c
 
-Usage:
+### Usage
 
     user@subgraph:~/src/leekspeak$ ./leekspeak encode 2b5dj4wasoaww3k6.onion
     chokidars defrosts glads reprisals smirky 
