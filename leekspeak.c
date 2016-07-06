@@ -120,7 +120,7 @@ onion_to_phrase(const u8 *onion)
 }
 
 static void
-phrase_to_onion(u8 **phrase)
+phrase_to_onion(const u8 **phrase)
 {
 	u8 raw_onion[10] = { 0 }, onion[17] = { 0 };
 	u16 *x = (u16 *)&raw_onion[0];
@@ -138,16 +138,18 @@ main(int argc, char **argv)
 	if (!populate_word_list()) goto end;
 	if ('e' == argv[1][0]) {
 		onion_value_init();
-		onion_to_phrase((u8 *)strtok(argv[2], "."));
+		char *p = strchr(argv[2], '.');
+		if (p) *p = 0;
+		onion_to_phrase((const u8 *)argv[2]);
 	} else if ('d' == argv[1][0]) {
-		phrase_to_onion((u8 **)&argv[2]);
+		phrase_to_onion((const u8 **)&argv[2]);
 	} else goto usage;
 end:
 	depopulate_word_list();
 	return 0;
 usage:
 	printf("Usage: %s [(e)ncode/(d)ecode] [phrase/onion]\n", argv[0]);
-	printf("`%s encode facebookcorewwwi.onion`\n", argv[0]);
-	printf("`%s decode 'redate sheilas lifesome dowable tontiners'`\n", argv[0]);
+	printf("%s encode facebookcorewwwi.onion\n", argv[0]);
+	printf("%s decode redate sheilas lifesome dowable tontiners\n", argv[0]);
 	return -1;
 }
